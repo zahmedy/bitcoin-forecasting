@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgres:16
+    container_name: ts_db
+    environment:
+      POSTGRES_USER: ts
+      POSTGRES_PASSWORD: ts
+      POSTGRES_DB: ts
+    ports:
+      - "5432:5432"
+    volumes:
+      - ts_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ts -d ts"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  ts_pgdata:
