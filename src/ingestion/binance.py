@@ -61,9 +61,6 @@ def insert_to_db(rows):
     return len(values)
 
 
-
-
-
 if __name__ == "__main__":
     end_time = datetime.utcnow()
     start_time = end_time - timedelta(days=365 * 5)

@@ -10,4 +10,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src /app/src
 
-CMD ["python", "-m", "src.ingestion.binance_ingest"]
+CMD ["python", "-m", "src.ingestion.binance"]
