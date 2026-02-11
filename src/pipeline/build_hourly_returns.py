@@ -1,6 +1,5 @@
 from sqlalchemy import text
 from src.db.db import get_engine
-import os
 
 SQL_CREATE = """
 CREATE TABLE IF NOT EXISTS returns_1h (
