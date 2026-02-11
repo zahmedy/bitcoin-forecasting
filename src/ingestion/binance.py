@@ -2,7 +2,7 @@ import os
 from decimal import Decimal
 from datetime import datetime, timedelta
 import requests
-import psycopg
+from sqlalchemy import create_engine, text
 
 def get_btc_data(start_ms):
     symbol = "BTCUSDT"
@@ -26,6 +26,8 @@ def insert_to_db(rows):
     db_url = os.getenv("DATABASE_URL")
     if not db_url:
         raise RuntimeError("DATABASE_URL is not set")
+    if db_url.startswith("postgresql://"):
+        db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
 
     symbol = "BTCUSDT"
     interval = "1h"
@@ -53,10 +55,9 @@ def insert_to_db(rows):
             )
         )
 
-    with psycopg.connect(db_url) as conn:
-        with conn.cursor() as cur:
-            cur.executemany(insert_sql, values)
-        conn.commit()
+    engine = create_engine(db_url, future=True)
+    with engine.begin() as conn:
+        conn.execute(text(insert_sql), values)
 
     return len(values)
 
