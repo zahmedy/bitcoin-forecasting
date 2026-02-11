@@ -3,6 +3,7 @@ from decimal import Decimal
 from datetime import datetime, timedelta
 import requests
 from sqlalchemy import create_engine, text
+from math import log
 
 def get_btc_data(start_ms):
     symbol = "BTCUSDT"
@@ -61,6 +62,9 @@ def insert_to_db(rows):
 
     return len(values)
 
+def calculate_hourly_returns(close_t, close_t_1):
+    return log(close_t) - log(close_t_1)
+    
 
 if __name__ == "__main__":
     end_time = datetime.utcnow()
