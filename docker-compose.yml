@@ -24,6 +24,17 @@ services:
     depends_on:
       db:
         condition: service_healthy
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile.ingestor
+    environment:
+      DATABASE_URL: postgresql://ts:ts@db:5432/ts
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["python", "-m", "src.pipeline.build_returns"]
+
 
 
 volumes:
