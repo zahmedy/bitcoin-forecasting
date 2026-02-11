@@ -20,7 +20,7 @@ services:
       context: .
       dockerfile: Dockerfile.ingestor
     environment:
-      DATABASE_URL: postgresql+psycopg://ts:ts@db:5432/ts
+      DATABASE_URL: postgresql://ts:ts@db:5432/ts
     depends_on:
       db:
         condition: service_healthy
@@ -28,4 +28,3 @@ services:
 
 volumes:
   ts_pgdata:
-
