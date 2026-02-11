@@ -1,4 +1,5 @@
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
+from src.db.db import get_engine
 import os
 
 SQL_CREATE = """
@@ -24,8 +25,7 @@ ON CONFLICT (symbol, time) DO NOTHING;
 """
 
 def main() -> None:
-    db_url = os.environ["DATABASE_URL"]
-    engine = create_engine(db_url, pool_pre_ping=True)
+    engine = get_engine()
 
     with engine.begin() as conn:
         conn.execute(text(SQL_CREATE))
