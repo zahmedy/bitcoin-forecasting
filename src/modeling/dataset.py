@@ -37,4 +37,3 @@ def get_hourly_df():
 
 if __name__ == "__main__":
     df = get_hourly_df()
-    print(df.head())

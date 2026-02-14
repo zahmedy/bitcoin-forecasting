@@ -56,8 +56,5 @@ services:
         "python -m src.pipeline.build_daily_returns; while sleep 86400; do python -m src.pipeline.build_daily_returns; done",
       ]
     restart: unless-stopped
-
-
-
 volumes:
   ts_pgdata:
