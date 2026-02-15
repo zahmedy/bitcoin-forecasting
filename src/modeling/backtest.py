@@ -12,7 +12,7 @@ def train():
         return None
     
     y = df["y"]
-    X = df.drop(columns=["y", "time"])
+    X = df.drop(columns=["y", "time", "symbol"])
     scaler = StandardScaler()
     linear = LinearRegression()
 
