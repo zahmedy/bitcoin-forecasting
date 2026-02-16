@@ -56,5 +56,18 @@ services:
         "python -m src.pipeline.build_daily_returns; while sleep 86400; do python -m src.pipeline.build_daily_returns; done",
       ]
     restart: unless-stopped
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.ingestor
+    environment:
+      DATABASE_URL: postgresql://ts:ts@db:5432/ts
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    command: ["python", "-m", "src.api.main"]
+
 volumes:
   ts_pgdata:
