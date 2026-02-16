@@ -52,7 +52,7 @@ def insert_to_db(rows):
 
     engine = get_engine()
     with engine.begin() as conn:
-        conn.execute(text(insert_sql), values)
+        conn.exec_driver_sql(insert_sql, values)
 
     return len(values)
 
