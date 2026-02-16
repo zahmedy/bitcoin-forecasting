@@ -22,6 +22,8 @@ def get_hourly_df():
                 return None
 
             df = pd.DataFrame(data, columns=result.keys())
+            df["r"] = pd.to_numeric(df["r"], errors="coerce")
+            df = df.dropna(subset=["r"])
             df["abs_r"] = df["r"].abs()
             df["y"] = df["abs_r"].shift(-1)
             df["lag0"] = df["abs_r"].shift(0)
