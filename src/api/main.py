@@ -45,8 +45,74 @@ PAGE = """
     <p class="small">Auto-refresh every <code>30s</code>.</p>
     <p class="small" id="status"></p>
   </div>
+  <div style="height:16px"></div>
+<div class="card">
+  <div class="k">Last 48h: Actual |return| vs Predicted |return|</div>
+  <canvas id="chart" width="600" height="240" style="width:100%; max-width:640px;"></canvas>
+  <p class="small">Actual = solid line. Predicted = dashed line.</p>
+</div>
+
 
 <script>
+function drawLine(ctx, points, dashed=false) {
+  if (points.length < 2) return;
+  ctx.save();
+  if (dashed) ctx.setLineDash([6, 4]);
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function scalePoints(series, w, h, pad, yMax) {
+  const n = series.length;
+  if (n === 0) return [];
+  return series.map((p, i) => {
+    const x = pad + (i / Math.max(1, n-1)) * (w - 2*pad);
+    const y = pad + (1 - (p.v / yMax)) * (h - 2*pad);
+    return {x, y};
+  });
+}
+
+async function refreshChart() {
+  const hours = 48;
+  const [aRes, pRes] = await Promise.all([
+    fetch(`/v1/series/abs_returns?hours=${hours}`),
+    fetch(`/v1/series/predictions?hours=${hours}`)
+  ]);
+  const actual = await aRes.json();
+  const pred = await pRes.json();
+
+  const canvas = document.getElementById("chart");
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width, h = canvas.height, pad = 18;
+
+  // clear
+  ctx.clearRect(0,0,w,h);
+
+  // choose a y scale based on max of both
+  const maxA = actual.reduce((m,p)=>Math.max(m,p.v), 0);
+  const maxP = pred.reduce((m,p)=>Math.max(m,p.v), 0);
+  const yMax = Math.max(1e-9, maxA, maxP) * 1.1;
+
+  // axes
+  ctx.beginPath();
+  ctx.moveTo(pad, pad);
+  ctx.lineTo(pad, h - pad);
+  ctx.lineTo(w - pad, h - pad);
+  ctx.stroke();
+
+  // lines
+  const aPts = scalePoints(actual, w, h, pad, yMax);
+  const pPts = scalePoints(pred, w, h, pad, yMax);
+  drawLine(ctx, aPts, false);
+  drawLine(ctx, pPts, true);
+
+  // label yMax
+  ctx.fillText(`yMax≈${yMax.toFixed(4)}`, pad + 6, pad + 10);
+}
+
 async function refresh() {
   try {
     const r = await fetch("/v1/latest");
@@ -54,9 +120,10 @@ async function refresh() {
 
     document.getElementById("price").textContent = j.latest_close ?? "—";
     document.getElementById("price_time").textContent = j.latest_close_time ?? "—";
-
     document.getElementById("yhat").textContent = j.yhat ?? "—";
     document.getElementById("pred_for").textContent = j.predicted_for ?? "—";
+
+    await refreshChart();
 
     document.getElementById("status").textContent =
       "Updated: " + new Date().toISOString();
@@ -75,6 +142,32 @@ setInterval(refresh, 30000);
 @app.get("/", response_class=HTMLResponse)
 def home():
     return HTMLResponse(PAGE)
+
+@app.get("/v1/series/abs_returns")
+def series_abs_returns(hours: int = 48):
+    q = text("""
+      SELECT time, ABS(r) AS abs_r
+      FROM returns_1h
+      WHERE symbol='BTCUSDT'
+        AND time >= now() - (:hours || ' hours')::interval
+      ORDER BY time
+    """)
+    with engine.begin() as conn:
+        rows = conn.execute(q, {"hours": hours}).mappings().all()
+    return [{"t": r["time"].isoformat(), "v": float(r["abs_r"])} for r in rows]
+
+@app.get("/v1/series/predictions")
+def series_predictions(hours: int = 48):
+    q = text("""
+      SELECT predicted_for, yhat
+      FROM predictions
+      WHERE symbol='BTCUSDT' AND freq='1h' AND target='abs_return'
+        AND predicted_for >= now() - (:hours || ' hours')::interval
+      ORDER BY predicted_for
+    """)
+    with engine.begin() as conn:
+        rows = conn.execute(q, {"hours": hours}).mappings().all()
+    return [{"t": r["predicted_for"].isoformat(), "v": float(r["yhat"])} for r in rows]
 
 @app.get("/v1/latest")
 def latest():
