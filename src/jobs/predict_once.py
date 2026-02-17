@@ -78,5 +78,21 @@ def main():
 
     print("predicted_for", (last_time + pd.Timedelta(hours=1)).isoformat(), "yhat", yhat)
 
+import time
+from datetime import datetime, timezone
+
+def sleep_until_next_hour():
+    now = datetime.now(timezone.utc)
+    next_hour = (now.replace(minute=0, second=0, microsecond=0)
+                 + pd.Timedelta(hours=1))
+    sleep_seconds = (next_hour - now).total_seconds()
+    time.sleep(max(0, sleep_seconds))
+
 if __name__ == "__main__":
-    main()
+    while True:
+        try:
+            main()
+        except Exception as e:
+            print("prediction error:", e)
+        sleep_until_next_hour()
+

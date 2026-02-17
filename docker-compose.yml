@@ -24,6 +24,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    command: ["python", "-m", "src.ingestion.binance"]
   pipeline_hourly:
     build:
       context: .
@@ -68,6 +69,15 @@ services:
     ports:
       - "8000:8000"
     command: ["python", "-m", "src.api.main"]
-
+  predictor:
+    build:
+      context: .
+      dockerfile: Dockerfile.ingestor
+    environment:
+      DATABASE_URL: postgresql+psycopg://ts:ts@db:5432/ts
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["python", "-m", "src.jobs.predict_once"]
 volumes:
   ts_pgdata:
