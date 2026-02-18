@@ -37,7 +37,7 @@ PAGE = """
         <div class="small" id="price_time">—</div>
       </div>
       <div>
-        <div class="k">Predicted |return|</div>
+        <div class="k">Expected move</div>
         <div class="v" id="yhat">—</div>
         <div class="small" id="pred_for">—</div>
       </div>
@@ -121,7 +121,12 @@ async function refresh() {
 
     document.getElementById("price").textContent = j.latest_close ?? "—";
     document.getElementById("price_time").textContent = j.latest_close_time ?? "—";
-    document.getElementById("yhat").textContent = j.yhat ?? "—";
+    const yhat = j.yhat != null ? Number(j.yhat) : null;
+    const price = j.latest_close != null ? Number(j.latest_close) : null;
+    const move = (yhat != null && price != null) ? price * yhat : null;
+    document.getElementById("yhat").textContent = move != null
+      ? `~$${move.toFixed(0)} next hour`
+      : "—";
     document.getElementById("pred_for").textContent = j.predicted_for ?? "—";
 
     await refreshChart();
