@@ -119,7 +119,10 @@ async function refresh() {
     const r = await fetch("/v1/latest");
     const j = await r.json();
 
-    document.getElementById("price").textContent = j.latest_close ?? "—";
+    const latestClose = j.latest_close != null ? Number(j.latest_close) : null;
+    document.getElementById("price").textContent = latestClose != null
+      ? `$${latestClose.toFixed(2)}`
+      : "—";
     document.getElementById("price_time").textContent = j.latest_close_time ?? "—";
     const yhat = j.yhat != null ? Number(j.yhat) : null;
     const price = j.latest_close != null ? Number(j.latest_close) : null;
