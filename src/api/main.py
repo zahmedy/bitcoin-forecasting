@@ -54,9 +54,10 @@ PAGE = """
 
 
 <script>
-function drawLine(ctx, points, dashed=false) {
+function drawLine(ctx, points, dashed=false, color="#111") {
   if (points.length < 2) return;
   ctx.save();
+  ctx.strokeStyle = color;
   if (dashed) ctx.setLineDash([6, 4]);
   ctx.beginPath();
   ctx.moveTo(points[0].x, points[0].y);
@@ -106,8 +107,8 @@ async function refreshChart() {
   // lines
   const aPts = scalePoints(actual, w, h, pad, yMax);
   const pPts = scalePoints(pred, w, h, pad, yMax);
-  drawLine(ctx, aPts, false);
-  drawLine(ctx, pPts, true);
+  drawLine(ctx, aPts, false, "#1f4fd6");
+  drawLine(ctx, pPts, true, "#e0672f");
 
   // label yMax
   ctx.fillText(`yMax≈${yMax.toFixed(4)}`, pad + 6, pad + 10);
