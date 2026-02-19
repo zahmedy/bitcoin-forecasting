@@ -94,11 +94,10 @@ async function refreshChart() {
   // clear
   ctx.clearRect(0,0,w,h);
 
-  // choose separate y scales
+  // choose a shared y scale
   const maxA = actual.reduce((m,p)=>Math.max(m,p.v), 0);
   const maxP = pred.reduce((m,p)=>Math.max(m,p.v), 0);
-  const yMaxA = Math.max(1e-9, maxA) * 1.1;
-  const yMaxP = Math.max(1e-9, maxP) * 1.1;
+  const yMax = Math.max(1e-9, maxA, maxP) * 1.1;
 
   // time range (extend 1h beyond latest actual)
   const tActual = actual.map(p => new Date(p.t).getTime());
@@ -107,25 +106,22 @@ async function refreshChart() {
   const lastActual = tActual.length ? Math.max(...tActual) : Date.now();
   const tMax = Math.max(lastActual + 3600 * 1000, ...tPred, lastActual);
 
-  // axes (left = actual, right = predicted)
+  // axes
   ctx.beginPath();
   ctx.moveTo(pad, pad);
   ctx.lineTo(pad, h - pad);
   ctx.lineTo(w - pad, h - pad);
-  ctx.lineTo(w - pad, pad);
   ctx.stroke();
 
   // lines
-  const aPts = scalePoints(actual, w, h, pad, yMaxA, tMin, tMax);
-  const pPts = scalePoints(pred, w, h, pad, yMaxP, tMin, tMax);
+  const aPts = scalePoints(actual, w, h, pad, yMax, tMin, tMax);
+  const pPts = scalePoints(pred, w, h, pad, yMax, tMin, tMax);
   drawLine(ctx, aPts, false, "#1f4fd6");
   drawLine(ctx, pPts, true, "#e0672f");
 
-  // labels
-  ctx.fillStyle = "#1f4fd6";
-  ctx.fillText(`Actual yMax≈${yMaxA.toFixed(4)}`, pad + 6, pad + 10);
-  ctx.fillStyle = "#e0672f";
-  ctx.fillText(`Pred yMax≈${yMaxP.toFixed(4)}`, w - pad - 120, pad + 10);
+  // label yMax
+  ctx.fillStyle = "#111";
+  ctx.fillText(`yMax≈${yMax.toFixed(4)}`, pad + 6, pad + 10);
 }
 
 async function refresh() {
