@@ -9,22 +9,24 @@ if DB_URL.startswith("postgresql://"):
     DB_URL = DB_URL.replace("postgresql://", "postgresql+psycopg://", 1)
 engine = create_engine(DB_URL, pool_pre_ping=True)
 
-def load_returns_1h() -> pd.DataFrame:
+def load_returns_5m() -> pd.DataFrame:
     q = text("""
       SELECT time, r
-      FROM returns_1h
+      FROM returns_5m
       WHERE symbol = 'BTCUSDT'
       ORDER BY time
     """)
     with engine.begin() as conn:
         rows = conn.execute(q).mappings().all()
     df = pd.DataFrame(rows)
+    if df.empty or "r" not in df.columns:
+        return pd.DataFrame(columns=["time", "r"])
     df["r"] = pd.to_numeric(df["r"], errors="coerce")
     df = df.dropna(subset=["r"])
-    return df.dropna().reset_index(drop=True)
+    return df.reset_index(drop=True)
 
 def main():
-    df = load_returns_1h()
+    df = load_returns_5m()
     if df.empty:
         print("No returns available for training")
         return
@@ -38,7 +40,7 @@ def main():
         conn.execute(
             text("""
               INSERT INTO model_artifacts (symbol, freq, target, trained_at, artifact)
-              VALUES ('BTCUSDT', '1h', 'abs_return', now(), :artifact)
+              VALUES ('BTCUSDT', '5m', 'abs_return', now(), :artifact)
             """),
             {"artifact": artifact},
         )

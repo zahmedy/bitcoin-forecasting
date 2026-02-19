@@ -22,7 +22,7 @@ WITH daily_close AS (
             ORDER BY open_time DESC
         ) AS rn
     FROM candles
-    WHERE interval = '1h'
+    WHERE interval = '5m'
 ),
 daily_close_dedup AS (
     SELECT symbol, day, close

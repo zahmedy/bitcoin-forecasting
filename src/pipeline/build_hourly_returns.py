@@ -2,7 +2,7 @@ from sqlalchemy import text
 from src.db.db import get_engine
 
 SQL_CREATE = """
-CREATE TABLE IF NOT EXISTS returns_1h (
+CREATE TABLE IF NOT EXISTS returns_5m (
   symbol TEXT NOT NULL,
   time TIMESTAMPTZ NOT NULL,
   close NUMERIC NOT NULL,
@@ -12,14 +12,14 @@ CREATE TABLE IF NOT EXISTS returns_1h (
 """
 
 SQL_INSERT = """
-INSERT INTO returns_1h (symbol, time, close, r)
+INSERT INTO returns_5m (symbol, time, close, r)
 SELECT
   symbol,
   open_time AS time,
   close,
   LN(close) - LN(LAG(close) OVER (PARTITION BY symbol ORDER BY open_time)) AS r
 FROM candles
-WHERE interval = '1h'
+WHERE interval = '5m'
 ON CONFLICT (symbol, time) DO NOTHING;
 """
 

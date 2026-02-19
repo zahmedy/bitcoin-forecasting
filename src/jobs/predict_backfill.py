@@ -10,23 +10,25 @@ if DB_URL.startswith("postgresql://"):
 engine = create_engine(DB_URL, pool_pre_ping=True)
 
 
-def load_returns_1h() -> pd.DataFrame:
+def load_returns_5m() -> pd.DataFrame:
     q = text("""
       SELECT time, r
-      FROM returns_1h
+      FROM returns_5m
       WHERE symbol = 'BTCUSDT'
       ORDER BY time
     """)
     with engine.begin() as conn:
         rows = conn.execute(q).mappings().all()
     df = pd.DataFrame(rows)
+    if df.empty or "r" not in df.columns:
+        return pd.DataFrame(columns=["time", "r"])
     df["r"] = pd.to_numeric(df["r"], errors="coerce")
     df = df.dropna(subset=["r"]).reset_index(drop=True)
     return df
 
 
 def main(hours: int = 50) -> None:
-    df = load_returns_1h()
+    df = load_returns_5m()
     if df.empty:
         print("No returns available for backfill")
         return
@@ -40,11 +42,12 @@ def main(hours: int = 50) -> None:
     sigma = sigma.reset_index(drop=True)
     df = df.copy().reset_index(drop=True)
     df["yhat"] = sigma
-    df = df.tail(hours)
+    bars = max(1, int(hours * 60 / 5))
+    df = df.tail(bars)
 
     rows = []
     for _, row in df.iterrows():
-        predicted_for = row["time"] + pd.Timedelta(hours=1)
+        predicted_for = row["time"] + pd.Timedelta(minutes=5)
         rows.append(
             {
                 "pred_for": predicted_for,
@@ -54,7 +57,7 @@ def main(hours: int = 50) -> None:
 
     q_ins = text("""
       INSERT INTO predictions (symbol, freq, target, predicted_for, yhat)
-      VALUES ('BTCUSDT', '1h', 'abs_return', :pred_for, :yhat)
+      VALUES ('BTCUSDT', '5m', 'abs_return', :pred_for, :yhat)
       ON CONFLICT (symbol, freq, target, predicted_for) DO NOTHING
     """)
     with engine.begin() as conn:
@@ -65,7 +68,7 @@ def main(hours: int = 50) -> None:
         conn.execute(
             text("""
               INSERT INTO model_artifacts (symbol, freq, target, trained_at, artifact)
-              VALUES ('BTCUSDT', '1h', 'abs_return', now(), :artifact)
+              VALUES ('BTCUSDT', '5m', 'abs_return', now(), :artifact)
             """),
             {"artifact": artifact},
         )

@@ -78,7 +78,7 @@ PAGE = """
     <div class="row" style="margin-bottom: 8px;">
       <div>
         <h1>BTC Volatility Forecast</h1>
-        <p class="sub">Next‑hour expected move and recent regime context.</p>
+        <p class="sub">Next‑5m expected move and recent regime context.</p>
       </div>
       <div class="badge" id="regime_badge">Vol regime: —</div>
     </div>
@@ -90,12 +90,12 @@ PAGE = """
         <div class="small mono" id="price_time">—</div>
       </div>
       <div class="card">
-        <div class="k">Expected move (1σ)</div>
+        <div class="k">Expected move (5m, 1σ)</div>
         <div class="v" id="move">—</div>
         <div class="small" id="move_pct">—</div>
       </div>
       <div class="card">
-        <div class="k">Next‑hour range</div>
+        <div class="k">Next‑5m range</div>
         <div class="v mono" id="range_68">—</div>
         <div class="small mono" id="range_95">—</div>
       </div>
@@ -103,7 +103,7 @@ PAGE = """
 
     <div class="grid">
       <div class="card">
-        <div class="k">Last hour |return|</div>
+        <div class="k">Last 5m |return|</div>
         <div class="v" id="last_abs_move">—</div>
         <div class="small" id="last_abs_return">—</div>
       </div>
@@ -179,12 +179,12 @@ async function refreshChart() {
   const maxP = pred.reduce((m,p)=>Math.max(m,p.v), 0);
   const yMax = Math.max(1e-9, maxA, maxP) * 1.1;
 
-  // time range (extend 1h beyond latest actual)
+  // time range (extend 5m beyond latest actual)
   const tActual = actual.map(p => new Date(p.t).getTime());
   const tPred = pred.map(p => new Date(p.t).getTime());
   const tMin = Math.min(...tActual, ...tPred);
   const lastActual = tActual.length ? Math.max(...tActual) : Date.now();
-  const tMax = Math.max(lastActual + 3600 * 1000, ...tPred, lastActual);
+  const tMax = Math.max(lastActual + 5 * 60 * 1000, ...tPred, lastActual);
 
   // axes
   ctx.beginPath();
@@ -213,7 +213,7 @@ async function refresh() {
     document.getElementById("price_time").textContent = j.latest_close_time ?? "—";
 
     document.getElementById("move").textContent = j.expected_move != null
-      ? `${fmtUsd(j.expected_move, 0)} next hour`
+      ? `${fmtUsd(j.expected_move, 0)} next 5m`
       : "—";
     document.getElementById("move_pct").textContent = j.expected_move_pct != null
       ? `${fmtPct(j.expected_move_pct / 100, 2)} | for ${j.predicted_for ?? "—"}`
@@ -284,7 +284,7 @@ def home():
 def series_abs_returns(hours: int = 48):
     q = text("""
       SELECT time, ABS(r) AS abs_r
-      FROM returns_1h
+      FROM returns_5m
       WHERE symbol='BTCUSDT'
         AND time >= now() - (:hours || ' hours')::interval
       ORDER BY time
@@ -298,7 +298,7 @@ def series_predictions(hours: int = 48):
     q = text("""
       SELECT predicted_for, yhat
       FROM predictions
-      WHERE symbol='BTCUSDT' AND freq='1h' AND target='abs_return'
+      WHERE symbol='BTCUSDT' AND freq='5m' AND target='abs_return'
         AND predicted_for >= now() - (:hours || ' hours')::interval
       ORDER BY predicted_for
     """)
@@ -308,11 +308,11 @@ def series_predictions(hours: int = 48):
 
 @app.get("/v1/latest")
 def latest():
-    # Latest candle close (hourly)
+    # Latest candle close (5m)
     q_candle = text("""
       SELECT open_time, close
       FROM candles
-      WHERE symbol = 'BTCUSDT' AND interval = '1h'
+      WHERE symbol = 'BTCUSDT' AND interval = '5m'
       ORDER BY open_time DESC
       LIMIT 1
     """)
@@ -321,21 +321,21 @@ def latest():
     q_pred = text("""
       SELECT predicted_for, yhat
       FROM predictions
-      WHERE symbol = 'BTCUSDT' AND freq = '1h' AND target = 'abs_return'
+      WHERE symbol = 'BTCUSDT' AND freq = '5m' AND target = 'abs_return'
       ORDER BY predicted_for DESC
       LIMIT 1
     """)
 
     q_last_r = text("""
       SELECT time, r
-      FROM returns_1h
+      FROM returns_5m
       WHERE symbol = 'BTCUSDT'
       ORDER BY time DESC
       LIMIT 1
     """)
     q_recent_r = text("""
       SELECT r
-      FROM returns_1h
+      FROM returns_5m
       WHERE symbol = 'BTCUSDT'
         AND time >= now() - (:hours || ' hours')::interval
       ORDER BY time
@@ -343,7 +343,7 @@ def latest():
     q_pred_hist = text("""
       SELECT yhat
       FROM predictions
-      WHERE symbol = 'BTCUSDT' AND freq = '1h' AND target = 'abs_return'
+      WHERE symbol = 'BTCUSDT' AND freq = '5m' AND target = 'abs_return'
         AND predicted_for >= now() - (:hours || ' hours')::interval
       ORDER BY predicted_for
     """)

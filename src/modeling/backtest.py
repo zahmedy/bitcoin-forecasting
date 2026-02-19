@@ -47,8 +47,8 @@ def train(retrain_every: int = 24):
     baseline_mae = sum(baseline_errors) / len(baseline_errors)
     linear_mae = sum(linear_errors) / len(linear_errors)
 
-    print(f"Baseline MAE (hourly): {baseline_mae}")
-    print(f"Linear MAE (hourly): {linear_mae}")
+    print(f"Baseline MAE (5m): {baseline_mae}")
+    print(f"Linear MAE (5m): {linear_mae}")
 
 if __name__ == "__main__":
     train()

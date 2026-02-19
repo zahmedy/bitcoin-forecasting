@@ -9,7 +9,7 @@ def get_hourly_df():
 
         returns_query = """
             SELECT symbol, time, close, r
-            FROM returns_1h
+            FROM returns_5m
             ORDER BY time;
         """
 
