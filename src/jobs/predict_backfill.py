@@ -33,11 +33,13 @@ def main(hours: int = 50) -> None:
 
     am = arch_model(df["r"], mean="Zero", vol="GARCH", p=1, q=1, dist="normal")
     res = am.fit(disp="off")
-    f = res.forecast(horizon=1, reindex=False)
-    var = f.variance.iloc[:, 0]
-    sigma = var.pow(0.5)
-    df = df.copy()
-    df["yhat"] = sigma.values
+    sigma = pd.Series(res.conditional_volatility)
+    if len(sigma) != len(df):
+        f = res.forecast(horizon=1, reindex=True)
+        sigma = f.variance.iloc[:, 0].pow(0.5)
+    sigma = sigma.reset_index(drop=True)
+    df = df.copy().reset_index(drop=True)
+    df["yhat"] = sigma
     df = df.tail(hours)
 
     rows = []
