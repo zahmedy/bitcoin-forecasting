@@ -24,7 +24,13 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    command: ["python", "-m", "src.ingestion.binance"]
+    command:
+      [
+        "/bin/sh",
+        "-c",
+        "python -m src.ingestion.binance; while sleep 300; do python -m src.ingestion.binance; done",
+      ]
+    restart: unless-stopped
   pipeline_hourly:
     build:
       context: .
@@ -38,7 +44,7 @@ services:
       [
         "/bin/sh",
         "-c",
-        "python -m src.pipeline.build_hourly_returns; while sleep 3600; do python -m src.pipeline.build_hourly_returns; done",
+        "python -m src.pipeline.build_hourly_returns; while sleep 300; do python -m src.pipeline.build_hourly_returns; done",
       ]
     restart: unless-stopped
   pipeline_daily:
@@ -78,6 +84,12 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    command: ["python", "-m", "src.jobs.predict_once"]
+    command:
+      [
+        "/bin/sh",
+        "-c",
+        "python -m src.jobs.predict_once; while sleep 300; do python -m src.jobs.predict_once; done",
+      ]
+    restart: unless-stopped
 volumes:
   ts_pgdata:
