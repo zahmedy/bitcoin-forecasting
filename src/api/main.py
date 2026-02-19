@@ -159,7 +159,7 @@ function scalePoints(series, w, h, pad, yMax, tMin, tMax) {
 }
 
 async function refreshChart() {
-  const hours = 48;
+  const hours = 25;
   const [aRes, pRes] = await Promise.all([
     fetch(`/v1/series/abs_returns?hours=${hours}`),
     fetch(`/v1/series/predictions?hours=${hours}`)
