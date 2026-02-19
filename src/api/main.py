@@ -120,7 +120,7 @@ PAGE = """
     </div>
 
     <div class="card chart-card">
-      <div class="k">Last 48h: Actual |return| vs Predicted |return|</div>
+      <div class="k">Last 25h: Actual |return| vs Predicted |return|</div>
       <canvas id="chart" width="900" height="220"></canvas>
       <p class="small">Actual = solid line. Predicted = dashed line.</p>
       <p class="small" id="status"></p>
