@@ -66,11 +66,13 @@ function drawLine(ctx, points, dashed=false, color="#111") {
   ctx.restore();
 }
 
-function scalePoints(series, w, h, pad, yMax) {
+function scalePoints(series, w, h, pad, yMax, tMin, tMax) {
   const n = series.length;
   if (n === 0) return [];
+  const span = Math.max(1, tMax - tMin);
   return series.map((p, i) => {
-    const x = pad + (i / Math.max(1, n-1)) * (w - 2*pad);
+    const t = new Date(p.t).getTime();
+    const x = pad + ((t - tMin) / span) * (w - 2*pad);
     const y = pad + (1 - (p.v / yMax)) * (h - 2*pad);
     return {x, y};
   });
@@ -92,26 +94,38 @@ async function refreshChart() {
   // clear
   ctx.clearRect(0,0,w,h);
 
-  // choose a y scale based on max of both
+  // choose separate y scales
   const maxA = actual.reduce((m,p)=>Math.max(m,p.v), 0);
   const maxP = pred.reduce((m,p)=>Math.max(m,p.v), 0);
-  const yMax = Math.max(1e-9, maxA, maxP) * 1.1;
+  const yMaxA = Math.max(1e-9, maxA) * 1.1;
+  const yMaxP = Math.max(1e-9, maxP) * 1.1;
 
-  // axes
+  // time range (extend 1h beyond latest actual)
+  const tActual = actual.map(p => new Date(p.t).getTime());
+  const tPred = pred.map(p => new Date(p.t).getTime());
+  const tMin = Math.min(...tActual, ...tPred);
+  const lastActual = tActual.length ? Math.max(...tActual) : Date.now();
+  const tMax = Math.max(lastActual + 3600 * 1000, ...tPred, lastActual);
+
+  // axes (left = actual, right = predicted)
   ctx.beginPath();
   ctx.moveTo(pad, pad);
   ctx.lineTo(pad, h - pad);
   ctx.lineTo(w - pad, h - pad);
+  ctx.lineTo(w - pad, pad);
   ctx.stroke();
 
   // lines
-  const aPts = scalePoints(actual, w, h, pad, yMax);
-  const pPts = scalePoints(pred, w, h, pad, yMax);
+  const aPts = scalePoints(actual, w, h, pad, yMaxA, tMin, tMax);
+  const pPts = scalePoints(pred, w, h, pad, yMaxP, tMin, tMax);
   drawLine(ctx, aPts, false, "#1f4fd6");
   drawLine(ctx, pPts, true, "#e0672f");
 
-  // label yMax
-  ctx.fillText(`yMax≈${yMax.toFixed(4)}`, pad + 6, pad + 10);
+  // labels
+  ctx.fillStyle = "#1f4fd6";
+  ctx.fillText(`Actual yMax≈${yMaxA.toFixed(4)}`, pad + 6, pad + 10);
+  ctx.fillStyle = "#e0672f";
+  ctx.fillText(`Pred yMax≈${yMaxP.toFixed(4)}`, w - pad - 120, pad + 10);
 }
 
 async function refresh() {
