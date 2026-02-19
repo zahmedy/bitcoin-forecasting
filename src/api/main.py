@@ -1,4 +1,5 @@
 import os
+import statistics
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from sqlalchemy import create_engine, text
@@ -18,42 +19,121 @@ PAGE = """
   <meta charset="utf-8" />
   <title>BTC Volatility Live</title>
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; }
-    .card { padding: 16px; border: 1px solid #ddd; border-radius: 12px; max-width: 640px; }
-    .row { display: flex; gap: 16px; flex-wrap: wrap; }
-    .k { color: #666; font-size: 12px; }
-    .v { font-size: 22px; font-weight: 700; }
-    .small { color: #666; font-size: 13px; }
-    code { background: #f6f6f6; padding: 2px 6px; border-radius: 6px; }
+    @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap");
+  </style>
+  <style>
+    :root {
+      --bg: #f6f7fb;
+      --card: #ffffff;
+      --ink: #0d1015;
+      --muted: #5f6b7a;
+      --accent: #1f4fd6;
+      --accent-2: #e0672f;
+      --border: #e3e8f0;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 28px;
+      font-family: "Space Grotesk", system-ui, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 600px at 10% -10%, #dfe8ff 0%, transparent 60%),
+        radial-gradient(800px 500px at 100% 0%, #ffe9d8 0%, transparent 55%),
+        var(--bg);
+    }
+    .wrap { max-width: 980px; margin: 0 auto; }
+    h1 { font-size: 32px; margin: 0 0 6px 0; }
+    .sub { color: var(--muted); margin: 0 0 16px 0; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px 18px;
+      box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
+    }
+    .k { color: var(--muted); font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; }
+    .v { font-size: 24px; font-weight: 700; margin-top: 6px; }
+    .mono { font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .small { color: var(--muted); font-size: 12px; margin-top: 6px; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 10px; border-radius: 999px;
+      background: #eef2ff; color: #253b80; font-size: 12px; font-weight: 600;
+      border: 1px solid #d6deff;
+    }
+    .badge.high { background: #ffe8e1; border-color: #ffd1c1; color: #7b2c14; }
+    .badge.low { background: #e7f7ef; border-color: #c7efd9; color: #1e5a3a; }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .chart-card { padding: 16px 18px 10px; }
+    canvas { width: 100%; height: 220px; border: 1px solid var(--border); border-radius: 12px; }
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
-  <h2>BTC Live Volatility Forecast (next hour)</h2>
-  <div class="card">
-    <div class="row">
+  <div class="wrap">
+    <div class="row" style="margin-bottom: 8px;">
       <div>
-        <div class="k">Latest close</div>
-        <div class="v" id="price">—</div>
-        <div class="small" id="price_time">—</div>
+        <h1>BTC Volatility Forecast</h1>
+        <p class="sub">Next‑hour expected move and recent regime context.</p>
       </div>
-      <div>
-        <div class="k">Expected move</div>
-        <div class="v" id="yhat">—</div>
-        <div class="small" id="pred_for">—</div>
+      <div class="badge" id="regime_badge">Vol regime: —</div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="k">Latest close</div>
+        <div class="v mono" id="price">—</div>
+        <div class="small mono" id="price_time">—</div>
+      </div>
+      <div class="card">
+        <div class="k">Expected move (1σ)</div>
+        <div class="v" id="move">—</div>
+        <div class="small" id="move_pct">—</div>
+      </div>
+      <div class="card">
+        <div class="k">Next‑hour range</div>
+        <div class="v mono" id="range_68">—</div>
+        <div class="small mono" id="range_95">—</div>
       </div>
     </div>
-    <p class="small">Auto-refresh every <code>30s</code>.</p>
-    <p class="small" id="status"></p>
+
+    <div class="grid">
+      <div class="card">
+        <div class="k">Last hour |return|</div>
+        <div class="v" id="last_abs_move">—</div>
+        <div class="small" id="last_abs_return">—</div>
+      </div>
+      <div class="card">
+        <div class="k">Realized vol (24h)</div>
+        <div class="v" id="rv24">—</div>
+        <div class="small" id="rv24_pct">—</div>
+      </div>
+      <div class="card">
+        <div class="k">Realized vol (7d)</div>
+        <div class="v" id="rv7d">—</div>
+        <div class="small" id="rv7d_pct">—</div>
+      </div>
+    </div>
+
+    <div class="card chart-card">
+      <div class="k">Last 48h: Actual |return| vs Predicted |return|</div>
+      <canvas id="chart" width="900" height="220"></canvas>
+      <p class="small">Actual = solid line. Predicted = dashed line.</p>
+      <p class="small" id="status"></p>
+    </div>
   </div>
-  <div style="height:16px"></div>
-<div class="card">
-  <div class="k">Last 48h: Actual |return| vs Predicted |return|</div>
-  <canvas id="chart" width="600" height="240" style="width:100%; max-width:640px;"></canvas>
-  <p class="small">Actual = solid line. Predicted = dashed line.</p>
-</div>
 
 
 <script>
+const fmtUsd = (v, d=0) =>
+  v == null ? "—" : `$${Number(v).toLocaleString("en-US", {minimumFractionDigits:d, maximumFractionDigits:d})}`;
+const fmtPct = (v, d=2) =>
+  v == null ? "—" : `${(Number(v) * 100).toFixed(d)}%`;
+
 function drawLine(ctx, points, dashed=false, color="#111") {
   if (points.length < 2) return;
   ctx.save();
@@ -129,18 +209,56 @@ async function refresh() {
     const r = await fetch("/v1/latest");
     const j = await r.json();
 
-    const latestClose = j.latest_close != null ? Number(j.latest_close) : null;
-    document.getElementById("price").textContent = latestClose != null
-      ? `$${latestClose.toFixed(2)}`
-      : "—";
+    document.getElementById("price").textContent = fmtUsd(j.latest_close, 2);
     document.getElementById("price_time").textContent = j.latest_close_time ?? "—";
-    const yhat = j.yhat != null ? Number(j.yhat) : null;
-    const price = j.latest_close != null ? Number(j.latest_close) : null;
-    const move = (yhat != null && price != null) ? price * yhat : null;
-    document.getElementById("yhat").textContent = move != null
-      ? `~$${move.toFixed(0)} next hour`
+
+    document.getElementById("move").textContent = j.expected_move != null
+      ? `${fmtUsd(j.expected_move, 0)} next hour`
       : "—";
-    document.getElementById("pred_for").textContent = j.predicted_for ?? "—";
+    document.getElementById("move_pct").textContent = j.expected_move_pct != null
+      ? `${fmtPct(j.expected_move_pct / 100, 2)} | for ${j.predicted_for ?? "—"}`
+      : "—";
+
+    document.getElementById("range_68").textContent =
+      (j.range_68_low != null && j.range_68_high != null)
+        ? `${fmtUsd(j.range_68_low, 0)} – ${fmtUsd(j.range_68_high, 0)}`
+        : "—";
+    document.getElementById("range_95").textContent =
+      (j.range_95_low != null && j.range_95_high != null)
+        ? `95%: ${fmtUsd(j.range_95_low, 0)} – ${fmtUsd(j.range_95_high, 0)}`
+        : "—";
+
+    document.getElementById("last_abs_move").textContent = j.last_abs_move != null
+      ? fmtUsd(j.last_abs_move, 0)
+      : "—";
+    document.getElementById("last_abs_return").textContent = j.last_abs_return != null
+      ? `|r| = ${fmtPct(j.last_abs_return, 3)}`
+      : "—";
+
+    document.getElementById("rv24").textContent = j.rv24_move != null
+      ? fmtUsd(j.rv24_move, 0)
+      : "—";
+    document.getElementById("rv24_pct").textContent = j.rv24_std != null
+      ? `σ ≈ ${fmtPct(j.rv24_std, 3)} (24h)`
+      : "—";
+
+    document.getElementById("rv7d").textContent = j.rv7d_move != null
+      ? fmtUsd(j.rv7d_move, 0)
+      : "—";
+    document.getElementById("rv7d_pct").textContent = j.rv7d_std != null
+      ? `σ ≈ ${fmtPct(j.rv7d_std, 3)} (7d)`
+      : "—";
+
+    const badge = document.getElementById("regime_badge");
+    if (j.vol_regime) {
+      badge.textContent = `Vol regime: ${j.vol_regime}` + (j.vol_percentile != null ? ` (${Math.round(j.vol_percentile * 100)}th pct)` : "");
+      badge.classList.remove("high", "low");
+      if (j.vol_regime === "High") badge.classList.add("high");
+      if (j.vol_regime === "Low") badge.classList.add("low");
+    } else {
+      badge.textContent = "Vol regime: —";
+      badge.classList.remove("high", "low");
+    }
 
     await refreshChart();
 
@@ -208,18 +326,101 @@ def latest():
       LIMIT 1
     """)
 
+    q_last_r = text("""
+      SELECT time, r
+      FROM returns_1h
+      WHERE symbol = 'BTCUSDT'
+      ORDER BY time DESC
+      LIMIT 1
+    """)
+    q_recent_r = text("""
+      SELECT r
+      FROM returns_1h
+      WHERE symbol = 'BTCUSDT'
+        AND time >= now() - (:hours || ' hours')::interval
+      ORDER BY time
+    """)
+    q_pred_hist = text("""
+      SELECT yhat
+      FROM predictions
+      WHERE symbol = 'BTCUSDT' AND freq = '1h' AND target = 'abs_return'
+        AND predicted_for >= now() - (:hours || ' hours')::interval
+      ORDER BY predicted_for
+    """)
+
     with engine.begin() as conn:
         c = conn.execute(q_candle).mappings().first()
+        r_last = conn.execute(q_last_r).mappings().first()
+        r24 = conn.execute(q_recent_r, {"hours": 24}).mappings().all()
+        r7d = conn.execute(q_recent_r, {"hours": 168}).mappings().all()
         try:
             p = conn.execute(q_pred).mappings().first()
+            p_hist = conn.execute(q_pred_hist, {"hours": 168}).mappings().all()
         except ProgrammingError:
             p = None
+            p_hist = []
+
+    def _to_float(x):
+        return float(x) if x is not None else None
+
+    def _stdev(values):
+        if len(values) < 2:
+            return None
+        return statistics.pstdev(values)
+
+    price = _to_float(c["close"]) if c else None
+    yhat = _to_float(p["yhat"]) if p else None
+
+    expected_move = price * yhat if price is not None and yhat is not None else None
+    range_68_low = price - expected_move if expected_move is not None else None
+    range_68_high = price + expected_move if expected_move is not None else None
+    range_95_low = price - (1.96 * expected_move) if expected_move is not None else None
+    range_95_high = price + (1.96 * expected_move) if expected_move is not None else None
+
+    r_last_val = _to_float(r_last["r"]) if r_last else None
+    last_abs_return = abs(r_last_val) if r_last_val is not None else None
+    last_abs_move = price * last_abs_return if price is not None and last_abs_return is not None else None
+
+    r24_vals = [_to_float(r["r"]) for r in r24 if r["r"] is not None]
+    r7d_vals = [_to_float(r["r"]) for r in r7d if r["r"] is not None]
+    rv24_std = _stdev(r24_vals)
+    rv7d_std = _stdev(r7d_vals)
+    rv24_move = price * rv24_std if price is not None and rv24_std is not None else None
+    rv7d_move = price * rv7d_std if price is not None and rv7d_std is not None else None
+
+    yhat_hist = [_to_float(row["yhat"]) for row in p_hist if row["yhat"] is not None]
+    vol_percentile = None
+    if yhat is not None and yhat_hist:
+        count = sum(1 for v in yhat_hist if v <= yhat)
+        vol_percentile = count / len(yhat_hist)
+    if vol_percentile is None:
+        vol_regime = None
+    elif vol_percentile >= 0.7:
+        vol_regime = "High"
+    elif vol_percentile <= 0.3:
+        vol_regime = "Low"
+    else:
+        vol_regime = "Normal"
 
     return {
         "latest_close_time": (c["open_time"].isoformat() if c else None),
-        "latest_close": (str(c["close"]) if c else None),
+        "latest_close": price,
         "predicted_for": (p["predicted_for"].isoformat() if p else None),
-        "yhat": (str(p["yhat"]) if p else None),
+        "yhat": yhat,
+        "expected_move": expected_move,
+        "expected_move_pct": (yhat * 100 if yhat is not None else None),
+        "range_68_low": range_68_low,
+        "range_68_high": range_68_high,
+        "range_95_low": range_95_low,
+        "range_95_high": range_95_high,
+        "last_abs_return": last_abs_return,
+        "last_abs_move": last_abs_move,
+        "rv24_std": rv24_std,
+        "rv24_move": rv24_move,
+        "rv7d_std": rv7d_std,
+        "rv7d_move": rv7d_move,
+        "vol_percentile": vol_percentile,
+        "vol_regime": vol_regime,
     }
 
 def main():
