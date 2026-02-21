@@ -1,5 +1,6 @@
 import os
 import statistics
+from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from sqlalchemy import create_engine, text
@@ -11,6 +12,23 @@ if DB_URL.startswith("postgresql://"):
 engine = create_engine(DB_URL, pool_pre_ping=True)
 
 app = FastAPI()
+
+def _rolling_1h(rows):
+    window = []
+    sum_r = 0.0
+    out = []
+    for row in rows:
+        r = row.get("r")
+        if r is None:
+            continue
+        r = float(r)
+        window.append(r)
+        sum_r += r
+        if len(window) > 12:
+            sum_r -= window.pop(0)
+        if len(window) == 12:
+            out.append((row["time"], sum_r))
+    return out
 
 PAGE = """
 <!doctype html>
@@ -78,7 +96,7 @@ PAGE = """
     <div class="row" style="margin-bottom: 8px;">
       <div>
         <h1>BTC Volatility Forecast</h1>
-        <p class="sub">Next‑5m expected move and recent regime context.</p>
+        <p class="sub">Next‑hour expected move and recent regime context.</p>
       </div>
       <div class="badge" id="regime_badge">Vol regime: —</div>
     </div>
@@ -90,12 +108,12 @@ PAGE = """
         <div class="small mono" id="price_time">—</div>
       </div>
       <div class="card">
-        <div class="k">Expected move (5m, 1σ)</div>
+        <div class="k">Expected move (1h, 1σ)</div>
         <div class="v" id="move">—</div>
         <div class="small" id="move_pct">—</div>
       </div>
       <div class="card">
-        <div class="k">Next‑5m range</div>
+        <div class="k">Next‑hour range</div>
         <div class="v mono" id="range_68">—</div>
         <div class="small mono" id="range_95">—</div>
       </div>
@@ -103,7 +121,7 @@ PAGE = """
 
     <div class="grid">
       <div class="card">
-        <div class="k">Last 5m |return|</div>
+        <div class="k">Last hour |return|</div>
         <div class="v" id="last_abs_move">—</div>
         <div class="small" id="last_abs_return">—</div>
       </div>
@@ -179,12 +197,12 @@ async function refreshChart() {
   const maxP = pred.reduce((m,p)=>Math.max(m,p.v), 0);
   const yMax = Math.max(1e-9, maxA, maxP) * 1.1;
 
-  // time range (extend 5m beyond latest actual)
+  // time range (extend 1h beyond latest actual)
   const tActual = actual.map(p => new Date(p.t).getTime());
   const tPred = pred.map(p => new Date(p.t).getTime());
   const tMin = Math.min(...tActual, ...tPred);
   const lastActual = tActual.length ? Math.max(...tActual) : Date.now();
-  const tMax = Math.max(lastActual + 5 * 60 * 1000, ...tPred, lastActual);
+  const tMax = Math.max(lastActual + 60 * 60 * 1000, ...tPred, lastActual);
 
   // axes
   ctx.beginPath();
@@ -213,7 +231,7 @@ async function refresh() {
     document.getElementById("price_time").textContent = j.latest_close_time ?? "—";
 
     document.getElementById("move").textContent = j.expected_move != null
-      ? `${fmtUsd(j.expected_move, 0)} next 5m`
+      ? `${fmtUsd(j.expected_move, 0)} next hour`
       : "—";
     document.getElementById("move_pct").textContent = j.expected_move_pct != null
       ? `${fmtPct(j.expected_move_pct / 100, 2)} | for ${j.predicted_for ?? "—"}`
@@ -283,22 +301,24 @@ def home():
 @app.get("/v1/series/abs_returns")
 def series_abs_returns(hours: int = 48):
     q = text("""
-      SELECT time, ABS(r) AS abs_r
+      SELECT time, r
       FROM returns_5m
       WHERE symbol='BTCUSDT'
         AND time >= now() - (:hours || ' hours')::interval
       ORDER BY time
     """)
     with engine.begin() as conn:
-        rows = conn.execute(q, {"hours": hours}).mappings().all()
-    return [{"t": r["time"].isoformat(), "v": float(r["abs_r"])} for r in rows]
+        rows = conn.execute(q, {"hours": hours + 1}).mappings().all()
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    roll = _rolling_1h(rows)
+    return [{"t": t.isoformat(), "v": abs(r)} for t, r in roll if t >= cutoff]
 
 @app.get("/v1/series/predictions")
 def series_predictions(hours: int = 48):
     q = text("""
       SELECT predicted_for, yhat
       FROM predictions
-      WHERE symbol='BTCUSDT' AND freq='5m' AND target='abs_return'
+      WHERE symbol='BTCUSDT' AND freq='1h' AND target='abs_return'
         AND predicted_for >= now() - (:hours || ' hours')::interval
       ORDER BY predicted_for
     """)
@@ -321,20 +341,13 @@ def latest():
     q_pred = text("""
       SELECT predicted_for, yhat
       FROM predictions
-      WHERE symbol = 'BTCUSDT' AND freq = '5m' AND target = 'abs_return'
+      WHERE symbol = 'BTCUSDT' AND freq = '1h' AND target = 'abs_return'
       ORDER BY predicted_for DESC
       LIMIT 1
     """)
 
-    q_last_r = text("""
-      SELECT time, r
-      FROM returns_5m
-      WHERE symbol = 'BTCUSDT'
-      ORDER BY time DESC
-      LIMIT 1
-    """)
     q_recent_r = text("""
-      SELECT r
+      SELECT time, r
       FROM returns_5m
       WHERE symbol = 'BTCUSDT'
         AND time >= now() - (:hours || ' hours')::interval
@@ -343,16 +356,14 @@ def latest():
     q_pred_hist = text("""
       SELECT yhat
       FROM predictions
-      WHERE symbol = 'BTCUSDT' AND freq = '5m' AND target = 'abs_return'
+      WHERE symbol = 'BTCUSDT' AND freq = '1h' AND target = 'abs_return'
         AND predicted_for >= now() - (:hours || ' hours')::interval
       ORDER BY predicted_for
     """)
 
     with engine.begin() as conn:
         c = conn.execute(q_candle).mappings().first()
-        r_last = conn.execute(q_last_r).mappings().first()
-        r24 = conn.execute(q_recent_r, {"hours": 24}).mappings().all()
-        r7d = conn.execute(q_recent_r, {"hours": 168}).mappings().all()
+        r7d = conn.execute(q_recent_r, {"hours": 169}).mappings().all()
         try:
             p = conn.execute(q_pred).mappings().first()
             p_hist = conn.execute(q_pred_hist, {"hours": 168}).mappings().all()
@@ -377,12 +388,13 @@ def latest():
     range_95_low = price - (1.96 * expected_move) if expected_move is not None else None
     range_95_high = price + (1.96 * expected_move) if expected_move is not None else None
 
-    r_last_val = _to_float(r_last["r"]) if r_last else None
-    last_abs_return = abs(r_last_val) if r_last_val is not None else None
+    roll = _rolling_1h(r7d)
+    last_abs_return = abs(roll[-1][1]) if roll else None
     last_abs_move = price * last_abs_return if price is not None and last_abs_return is not None else None
 
-    r24_vals = [_to_float(r["r"]) for r in r24 if r["r"] is not None]
-    r7d_vals = [_to_float(r["r"]) for r in r7d if r["r"] is not None]
+    cutoff_24 = datetime.now(timezone.utc) - timedelta(hours=24)
+    r24_vals = [r for t, r in roll if t >= cutoff_24]
+    r7d_vals = [r for _, r in roll]
     rv24_std = _stdev(r24_vals)
     rv7d_std = _stdev(r7d_vals)
     rv24_move = price * rv24_std if price is not None and rv24_std is not None else None

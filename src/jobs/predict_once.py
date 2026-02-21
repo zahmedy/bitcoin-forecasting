@@ -34,46 +34,32 @@ def main():
 
     am = arch_model(df["r"], mean="Zero", vol="GARCH", p=1, q=1, dist="normal")
     res = am.fit(disp="off")
-    f = res.forecast(horizon=1, reindex=False)
-    var = float(f.variance.iloc[-1, 0])
-    yhat = var ** 0.5
+    # forecast 12 steps ahead (5m * 12 = 60m)
+    f = res.forecast(horizon=12, reindex=False)
+    var_path = f.variance.iloc[-1].to_numpy()
+    yhat = (var_path.sum()) ** 0.5
 
-    # predict for next 5m (last time + 5m)
+    # predict for next hour (last time + 1h)
     last_time = df["time"].iloc[-1]
     q_ins = text("""
       INSERT INTO predictions (symbol, freq, target, predicted_for, yhat)
-      VALUES ('BTCUSDT', '5m', 'abs_return', :pred_for, :yhat)
+      VALUES ('BTCUSDT', '1h', 'abs_return', :pred_for, :yhat)
       ON CONFLICT (symbol, freq, target, predicted_for) DO NOTHING
     """)
     with engine.begin() as conn:
-        conn.execute(q_ins, {"pred_for": last_time + pd.Timedelta(minutes=5), "yhat": yhat})
+        conn.execute(q_ins, {"pred_for": last_time + pd.Timedelta(hours=1), "yhat": yhat})
 
     artifact = pickle.dumps({"model_type": "garch", "model": res})
     with engine.begin() as conn:
         conn.execute(
             text("""
               INSERT INTO model_artifacts (symbol, freq, target, trained_at, artifact)
-              VALUES ('BTCUSDT', '5m', 'abs_return', now(), :artifact)
+              VALUES ('BTCUSDT', '1h', 'abs_return', now(), :artifact)
             """),
             {"artifact": artifact},
         )
 
-    print("predicted_for", (last_time + pd.Timedelta(minutes=5)).isoformat(), "yhat", yhat)
-
-import time
-from datetime import datetime, timezone
-
-def sleep_until_next_hour():
-    now = datetime.now(timezone.utc)
-    next_hour = (now.replace(minute=0, second=0, microsecond=0)
-                 + pd.Timedelta(hours=1))
-    sleep_seconds = (next_hour - now).total_seconds()
-    time.sleep(max(0, sleep_seconds))
+    print("predicted_for", (last_time + pd.Timedelta(hours=1)).isoformat(), "yhat", yhat)
 
 if __name__ == "__main__":
-    while True:
-        try:
-            main()
-        except Exception as e:
-            print("prediction error:", e)
-        sleep_until_next_hour()
+    main()

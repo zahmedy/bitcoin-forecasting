@@ -41,13 +41,13 @@ def main(hours: int = 50) -> None:
         sigma = f.variance.iloc[:, 0].pow(0.5)
     sigma = sigma.reset_index(drop=True)
     df = df.copy().reset_index(drop=True)
-    df["yhat"] = sigma
+    df["yhat"] = sigma * (12 ** 0.5)
     bars = max(1, int(hours * 60 / 5))
     df = df.tail(bars)
 
     rows = []
     for _, row in df.iterrows():
-        predicted_for = row["time"] + pd.Timedelta(minutes=5)
+        predicted_for = row["time"] + pd.Timedelta(hours=1)
         rows.append(
             {
                 "pred_for": predicted_for,
@@ -57,7 +57,7 @@ def main(hours: int = 50) -> None:
 
     q_ins = text("""
       INSERT INTO predictions (symbol, freq, target, predicted_for, yhat)
-      VALUES ('BTCUSDT', '5m', 'abs_return', :pred_for, :yhat)
+      VALUES ('BTCUSDT', '1h', 'abs_return', :pred_for, :yhat)
       ON CONFLICT (symbol, freq, target, predicted_for) DO NOTHING
     """)
     with engine.begin() as conn:
@@ -68,7 +68,7 @@ def main(hours: int = 50) -> None:
         conn.execute(
             text("""
               INSERT INTO model_artifacts (symbol, freq, target, trained_at, artifact)
-              VALUES ('BTCUSDT', '5m', 'abs_return', now(), :artifact)
+              VALUES ('BTCUSDT', '1h', 'abs_return', now(), :artifact)
             """),
             {"artifact": artifact},
         )
