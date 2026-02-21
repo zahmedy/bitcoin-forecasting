@@ -13,22 +13,28 @@ engine = create_engine(DB_URL, pool_pre_ping=True)
 
 app = FastAPI()
 
-def _rolling_1h(rows):
-    window = []
-    sum_r = 0.0
-    out = []
+def _hourly_bins(rows):
+    buckets = {}
     for row in rows:
+        ts = row.get("time")
         r = row.get("r")
-        if r is None:
+        if ts is None or r is None:
             continue
         r = float(r)
-        window.append(r)
-        sum_r += r
-        if len(window) > 12:
-            sum_r -= window.pop(0)
-        if len(window) == 12:
-            out.append((row["time"], sum_r))
-    return out
+        hour = ts.replace(minute=0, second=0, microsecond=0)
+        buckets[hour] = buckets.get(hour, 0.0) + r
+    return sorted(buckets.items())
+
+def _hourly_pred(rows):
+    buckets = {}
+    for row in rows:
+        ts = row.get("predicted_for")
+        y = row.get("yhat")
+        if ts is None or y is None:
+            continue
+        hour = ts.replace(minute=0, second=0, microsecond=0)
+        buckets[hour] = float(y)
+    return sorted(buckets.items())
 
 PAGE = """
 <!doctype html>
@@ -308,10 +314,10 @@ def series_abs_returns(hours: int = 48):
       ORDER BY time
     """)
     with engine.begin() as conn:
-        rows = conn.execute(q, {"hours": hours + 1}).mappings().all()
+        rows = conn.execute(q, {"hours": hours + 2}).mappings().all()
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
-    roll = _rolling_1h(rows)
-    return [{"t": t.isoformat(), "v": abs(r)} for t, r in roll if t >= cutoff]
+    hourly = _hourly_bins(rows)
+    return [{"t": t.isoformat(), "v": abs(r)} for t, r in hourly if t >= cutoff]
 
 @app.get("/v1/series/predictions")
 def series_predictions(hours: int = 48):
@@ -324,7 +330,9 @@ def series_predictions(hours: int = 48):
     """)
     with engine.begin() as conn:
         rows = conn.execute(q, {"hours": hours}).mappings().all()
-    return [{"t": r["predicted_for"].isoformat(), "v": float(r["yhat"])} for r in rows]
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    hourly = _hourly_pred(rows)
+    return [{"t": t.isoformat(), "v": v} for t, v in hourly if t >= cutoff]
 
 @app.get("/v1/latest")
 def latest():
@@ -388,13 +396,13 @@ def latest():
     range_95_low = price - (1.96 * expected_move) if expected_move is not None else None
     range_95_high = price + (1.96 * expected_move) if expected_move is not None else None
 
-    roll = _rolling_1h(r7d)
-    last_abs_return = abs(roll[-1][1]) if roll else None
+    hourly = _hourly_bins(r7d)
+    last_abs_return = abs(hourly[-1][1]) if hourly else None
     last_abs_move = price * last_abs_return if price is not None and last_abs_return is not None else None
 
     cutoff_24 = datetime.now(timezone.utc) - timedelta(hours=24)
-    r24_vals = [r for t, r in roll if t >= cutoff_24]
-    r7d_vals = [r for _, r in roll]
+    r24_vals = [r for t, r in hourly if t >= cutoff_24]
+    r7d_vals = [r for _, r in hourly]
     rv24_std = _stdev(r24_vals)
     rv7d_std = _stdev(r7d_vals)
     rv24_move = price * rv24_std if price is not None and rv24_std is not None else None
